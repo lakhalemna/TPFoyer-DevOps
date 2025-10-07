@@ -2,11 +2,42 @@ pipeline {
     agent any
 
     environment {
-        
         SONARQUBE_SERVER = 'SonarQube'
+        MYSQL_USER = 'user'
+        MYSQL_PASSWORD = 'password'
+        MYSQL_DB = 'tpprojet'
+        MYSQL_ROOT_PASSWORD = 'root'
     }
 
     stages {
+        // 0️⃣ Lancer MySQL dans Docker
+        stage('Start MySQL') {
+            steps {
+                script {
+                    // Vérifie si le conteneur MySQL existe
+                    def mysqlRunning = sh(script: "docker ps -q -f name=tpprojet-mysql", returnStdout: true).trim()
+                    if (!mysqlRunning) {
+                        // Crée et lance le conteneur
+                        sh """
+                        docker run -d --name tpprojet-mysql \
+                        -e MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD} \
+                        -e MYSQL_DATABASE=${MYSQL_DB} \
+                        -e MYSQL_USER=${MYSQL_USER} \
+                        -e MYSQL_PASSWORD=${MYSQL_PASSWORD} \
+                        -p 3306:3306 \
+                        mysql:8
+                        """
+                    } else {
+                        // Démarre le conteneur s'il est arrêté
+                        sh "docker start tpprojet-mysql"
+                    }
+
+                    // Attendre que MySQL soit prêt
+                    sh "sleep 20"
+                }
+            }
+        }
+
         // 1️⃣ Pull depuis Git
         stage('Pull from Git') {
             steps {
