@@ -10,7 +10,7 @@ pipeline {
     }
 
     stages {
-        // 0️⃣ Lancer MySQL dans Docker
+        // 0️⃣ Lancer MySQL dans Docker et attendre qu'il soit prêt
         stage('Start MySQL') {
             steps {
                 script {
@@ -32,8 +32,15 @@ pipeline {
                         sh "docker start tpprojet-mysql"
                     }
 
-                    // Attendre que MySQL soit prêt
-                    sh "sleep 20"
+                    // Attendre que MySQL soit prêt avec mysqladmin ping
+                    sh """
+                    echo "Waiting for MySQL to be ready..."
+                    until docker exec tpprojet-mysql mysqladmin ping -u${MYSQL_USER} -p${MYSQL_PASSWORD} --silent; do
+                        echo "MySQL not ready yet..."
+                        sleep 5
+                    done
+                    echo "MySQL is ready!"
+                    """
                 }
             }
         }
