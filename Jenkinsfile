@@ -1,5 +1,10 @@
 pipeline {
-    agent any
+    agent {
+        docker {
+            image 'maven:3.8.6-openjdk-17'
+            args '--network tpprojet-network'
+        }
+    }
     environment {
         SONARQUBE_SERVER = 'SonarQube'
         MYSQL_USER = 'user'
@@ -32,7 +37,7 @@ pipeline {
                         echo "✅ Conteneur MySQL déjà en cours d'exécution."
                         sh "docker start tpprojet-mysql || true"
                     }
-                    // Attendre que MySQL soit prêt
+                    // Attendre que MySQL accepte les connexions
                     sh '''
                     echo "⏳ Attente que MySQL soit prêt..."
                     for i in {1..10}; do
@@ -54,7 +59,37 @@ pipeline {
                 }
             }
         }
-        // ... (autres étapes inchangées : Pull from Git, Clean, Compile, SonarQube Analysis)
+        // 1️⃣ Pull depuis Git
+        stage('Pull from Git') {
+            steps {
+                git branch: 'main', url: 'https://github.com/lakhalemna/TPFoyer-DevOps.git'
+            }
+        }
+        // 2️⃣ Nettoyage du projet
+        stage('Clean') {
+            steps {
+                sh 'mvn clean'
+            }
+        }
+        // 3️⃣ Compilation
+        stage('Compile') {
+            steps {
+                sh 'mvn compile'
+            }
+        }
+        // 4️⃣ Analyse de la qualité du code avec SonarQube
+        stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv(SONARQUBE_SERVER) {
+                    sh '''
+                    mvn sonar:sonar \
+                    -Dsonar.projectKey=TPFoyer \
+                    -Dsonar.host.url=http://192.168.33.10:9000 \
+                    -Dsonar.login=squ_8eb92e72c4010669e9fe8e78b82a771f4c2975f5
+                    '''
+                }
+            }
+        }
         // 5️⃣ Génération du JAR avec profil "test"
         stage('Build JAR') {
             steps {
