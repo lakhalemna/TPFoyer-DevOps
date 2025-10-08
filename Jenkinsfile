@@ -27,20 +27,13 @@ pipeline {
                 sh 'mvn compile'
             }
         }
-        // 4️⃣ Analyse de la qualité du code avec SonarQube
-        stage('SonarQube Analysis') {
+       // 4️⃣ Analyse de la qualité du code avec SonarQube
+        stage('SonarQube Analysis'){
             steps {
                 withSonarQubeEnv(SONARQUBE_SERVER) {
-                    withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
-                        sh '''
-                        mvn sonar:sonar \
-                        -Dsonar.projectKey=TPFoyer \
-                        -Dsonar.host.url=http://192.168.33.10:9000 \
-                        -Dsonar.login=${SONAR_TOKEN}
-                        '''
-                    }
+                    sh 'mvn sonar:sonar -Dsonar.projectKey=TPFoyer -Dsonar.host.url=http://192.168.33.10:9000 -Dsonar.login=squ_8eb92e72c4010669e9fe8e78b82a771f4c2975f5' 
                 }
-            }
+            } 
         }
         // 5️⃣ Génération du fichier JAR
         stage('Build JAR') {
