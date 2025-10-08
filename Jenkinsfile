@@ -52,4 +52,12 @@ pipeline {
             }
         }
     }
+    post { 
+        success { 
+            echo 'Pipeline terminé avec succès !' 
+        } 
+        failure { 
+            echo 'Erreur dans le pipeline, vérifier les logs.' 
+        } 
+    }
 }
