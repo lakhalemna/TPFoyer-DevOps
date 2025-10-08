@@ -18,7 +18,7 @@ pipeline {
                     // Vérifie si le conteneur MySQL existe
                     def mysqlRunning = sh(script: "docker ps -q -f name=tpprojet-mysql", returnStdout: true).trim()
                     if (!mysqlRunning) {
-                        // Crée et lance le conteneur
+                        echo "🚀 Lancement du conteneur MySQL..."
                         sh """
                         docker run -d --name tpprojet-mysql \
                         -e MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD} \
@@ -29,18 +29,23 @@ pipeline {
                         mysql:8
                         """
                     } else {
-                        // Démarre le conteneur s'il est arrêté
-                        sh "docker start tpprojet-mysql"
+                        echo "✅ Conteneur MySQL déjà en cours d'exécution."
+                        sh "docker start tpprojet-mysql || true"
                     }
 
                     // ✅ Attendre que MySQL accepte les connexions
                     sh '''
-                    echo "Waiting for MySQL to be ready..."
-                    until docker exec tpprojet-mysql mysql -u${MYSQL_USER} -p${MYSQL_PASSWORD} -e "SELECT 1" ${MYSQL_DB}; do
-                        echo "MySQL not ready yet. Waiting 5s..."
+                    echo "⏳ Attente que MySQL soit prêt..."
+                    for i in {1..10}; do
+                        if docker exec tpprojet-mysql mysql -u${MYSQL_USER} -p${MYSQL_PASSWORD} -e "SELECT 1" ${MYSQL_DB} >/dev/null 2>&1; then
+                            echo "✅ MySQL est prêt !"
+                            exit 0
+                        fi
+                        echo "MySQL non prêt, nouvelle tentative dans 5 secondes..."
                         sleep 5
                     done
-                    echo "MySQL is ready!"
+                    echo "❌ MySQL ne répond pas après 50 secondes."
+                    exit 1
                     '''
                 }
             }
@@ -71,25 +76,31 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv(SONARQUBE_SERVER) {
-                    sh 'mvn sonar:sonar -Dsonar.projectKey=TPFoyer -Dsonar.host.url=http://192.168.33.10:9000 -Dsonar.login=squ_8eb92e72c4010669e9fe8e78b82a771f4c2975f5'
+                    sh '''
+                    mvn sonar:sonar \
+                    -Dsonar.projectKey=TPFoyer \
+                    -Dsonar.host.url=http://192.168.33.10:9000 \
+                    -Dsonar.login=squ_8eb92e72c4010669e9fe8e78b82a771f4c2975f5
+                    '''
                 }
             }
         }
 
-        // 5️⃣ Génération du JAR avec profil test
+        // 5️⃣ Génération du JAR avec profil "test"
         stage('Build JAR') {
             steps {
-                sh 'mvn package -Ptest'
+                // ✅ Correction ici : on remplace -Ptest par -Dspring.profiles.active=test
+                sh 'mvn package -Dspring.profiles.active=test'
             }
         }
     }
 
     post {
         success {
-            echo 'Pipeline terminé avec succès !'
+            echo '✅ Pipeline terminé avec succès !'
         }
         failure {
-            echo 'Erreur dans le pipeline, vérifier les logs.'
+            echo '❌ Erreur dans le pipeline, vérifier les logs.'
         }
     }
 }
