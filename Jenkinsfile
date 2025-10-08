@@ -4,13 +4,13 @@ pipeline {
         SONARQUBE_SERVER = 'SonarQube'
         MYSQL_DB = 'tpprojet'
         MYSQL_ROOT_PASSWORD = 'root'
-        MYSQL_HOST = '192.168.33.10' // Remplacez par l'IP de votre machine Vagrant si nécessaire
+        MYSQL_HOST = '192.168.33.10' 
     }
     stages {
         // 1️⃣ Pull depuis Git
         stage('Pull from Git') {
             steps {
-                // Pour un dépôt public, pas besoin de credentialsId
+                
                 // Si privé, ajoutez credentialsId: 'github-credentials'
                 git branch: 'main', url: 'https://github.com/lakhalemna/TPFoyer-DevOps.git'
             }
