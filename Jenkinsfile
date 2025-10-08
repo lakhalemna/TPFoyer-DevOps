@@ -2,75 +2,16 @@ pipeline {
     agent any
     environment {
         SONARQUBE_SERVER = 'SonarQube'
-        MYSQL_USER = 'user'
-        MYSQL_PASSWORD = 'password'
         MYSQL_DB = 'tpprojet'
         MYSQL_ROOT_PASSWORD = 'root'
-        // Ajout de l'IP de l'hôte si host.docker.internal ne fonctionne pas
         MYSQL_HOST = '192.168.33.10' // Remplacez par l'IP de votre machine Vagrant si nécessaire
     }
     stages {
-        // 0️⃣ Lancer MySQL dans Docker
-        stage('Start MySQL') {
-            steps {
-                script {
-                    // Créer un réseau Docker pour le conteneur MySQL
-                    sh 'docker network create tpprojet-network || true'
-                    // Vérifie si le conteneur MySQL existe
-                    def mysqlRunning = sh(script: "docker ps -q -f name=tpprojet-mysql", returnStdout: true).trim()
-                    if (!mysqlRunning) {
-                        echo "🚀 Lancement du conteneur MySQL..."
-                        sh """
-                        docker run -d --name tpprojet-mysql \
-                        --network tpprojet-network \
-                        -e MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD} \
-                        -e MYSQL_DATABASE=${MYSQL_DB} \
-                        -e MYSQL_USER=${MYSQL_USER} \
-                        -e MYSQL_PASSWORD=${MYSQL_PASSWORD} \
-                        -p 3306:3306 \
-                        mysql:8
-                        """
-                    } else {
-                        echo "✅ Conteneur MySQL déjà en cours d'exécution."
-                        sh "docker start tpprojet-mysql || true"
-                    }
-                    // Attendre que MySQL accepte les connexions
-                    sh '''
-                    echo "⏳ Attente que MySQL soit prêt..."
-                    for i in {1..10}; do
-                        if docker exec tpprojet-mysql mysql -u${MYSQL_USER} -p${MYSQL_PASSWORD} -e "SELECT 1" ${MYSQL_DB} >/dev/null 2>&1; then
-                            echo "✅ MySQL est prêt !"
-                            exit 0
-                        fi
-                        echo "MySQL non prêt, nouvelle tentative dans 5 secondes..."
-                        sleep 5
-                    done
-                    echo "❌ MySQL ne répond pas après 50 secondes."
-                    exit 1
-                    '''
-                    // Configurer les permissions MySQL pour root@'%'
-                    sh '''
-                    docker exec tpprojet-mysql mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e \
-                    "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION; FLUSH PRIVILEGES;"
-                    '''
-                }
-            }
-        }
-        // 0.5️⃣ Tester la connexion MySQL depuis l'hôte
-        stage('Test MySQL Connection') {
-            steps {
-                script {
-                    echo "🔍 Test de la connexion MySQL depuis l'hôte..."
-                    sh """
-                    docker run --rm --network tpprojet-network mysql:8 \
-                    mysql -h ${MYSQL_HOST} -u root -p${MYSQL_ROOT_PASSWORD} -e "SELECT 1" ${MYSQL_DB}
-                    """
-                }
-            }
-        }
         // 1️⃣ Pull depuis Git
         stage('Pull from Git') {
             steps {
+                // Pour un dépôt public, pas besoin de credentialsId
+                // Si privé, ajoutez credentialsId: 'github-credentials'
                 git branch: 'main', url: 'https://github.com/lakhalemna/TPFoyer-DevOps.git'
             }
         }
@@ -80,7 +21,7 @@ pipeline {
                 sh 'mvn clean'
             }
         }
-        // 3️⃣ Compilation
+        // 3️⃣ Compilation du projet
         stage('Compile') {
             steps {
                 sh 'mvn compile'
@@ -90,16 +31,18 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv(SONARQUBE_SERVER) {
-                    sh '''
-                    mvn sonar:sonar \
-                    -Dsonar.projectKey=TPFoyer \
-                    -Dsonar.host.url=http://192.168.33.10:9000 \
-                    -Dsonar.login=squ_8eb92e72c4010669e9fe8e78b82a771f4c2975f5
-                    '''
+                    withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
+                        sh '''
+                        mvn sonar:sonar \
+                        -Dsonar.projectKey=TPFoyer \
+                        -Dsonar.host.url=http://192.168.33.10:9000 \
+                        -Dsonar.login=${SONAR_TOKEN}
+                        '''
+                    }
                 }
             }
         }
-        // 5️⃣ Génération du JAR avec profil "test"
+        // 5️⃣ Génération du fichier JAR
         stage('Build JAR') {
             steps {
                 script {
@@ -114,14 +57,6 @@ pipeline {
                     }
                 }
             }
-        }
-    }
-    post {
-        success {
-            echo '✅ Pipeline terminé avec succès !'
-        }
-        failure {
-            echo '❌ Erreur dans le pipeline, vérifier les logs.'
         }
     }
 }
