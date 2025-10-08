@@ -10,7 +10,8 @@ pipeline {
     }
 
     stages {
-        // 0️⃣ Lancer MySQL dans Docker et attendre qu'il soit prêt
+
+        // 0️⃣ Lancer MySQL dans Docker
         stage('Start MySQL') {
             steps {
                 script {
@@ -32,15 +33,15 @@ pipeline {
                         sh "docker start tpprojet-mysql"
                     }
 
-                    // Attendre que MySQL soit prêt avec mysqladmin ping
-                    sh """
+                    // ✅ Attendre que MySQL accepte les connexions
+                    sh '''
                     echo "Waiting for MySQL to be ready..."
-                    until docker exec tpprojet-mysql mysqladmin ping -u${MYSQL_USER} -p${MYSQL_PASSWORD} --silent; do
-                        echo "MySQL not ready yet..."
+                    until docker exec tpprojet-mysql mysql -u${MYSQL_USER} -p${MYSQL_PASSWORD} -e "SELECT 1" ${MYSQL_DB}; do
+                        echo "MySQL not ready yet. Waiting 5s..."
                         sleep 5
                     done
                     echo "MySQL is ready!"
-                    """
+                    '''
                 }
             }
         }
@@ -75,10 +76,10 @@ pipeline {
             }
         }
 
-        // 5️⃣ Génération du JAR
+        // 5️⃣ Génération du JAR avec profil test
         stage('Build JAR') {
             steps {
-                sh 'mvn package'
+                sh 'mvn package -Ptest'
             }
         }
     }
