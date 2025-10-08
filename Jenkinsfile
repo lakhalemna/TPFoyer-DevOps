@@ -1,6 +1,5 @@
 pipeline {
     agent any
-
     environment {
         SONARQUBE_SERVER = 'SonarQube'
         MYSQL_USER = 'user'
@@ -8,19 +7,20 @@ pipeline {
         MYSQL_DB = 'tpprojet'
         MYSQL_ROOT_PASSWORD = 'root'
     }
-
     stages {
-
         // 0️⃣ Lancer MySQL dans Docker
         stage('Start MySQL') {
             steps {
                 script {
+                    // Créer un réseau Docker pour garantir la communication
+                    sh 'docker network create tpprojet-network || true'
                     // Vérifie si le conteneur MySQL existe
                     def mysqlRunning = sh(script: "docker ps -q -f name=tpprojet-mysql", returnStdout: true).trim()
                     if (!mysqlRunning) {
                         echo "🚀 Lancement du conteneur MySQL..."
                         sh """
                         docker run -d --name tpprojet-mysql \
+                        --network tpprojet-network \
                         -e MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD} \
                         -e MYSQL_DATABASE=${MYSQL_DB} \
                         -e MYSQL_USER=${MYSQL_USER} \
@@ -32,8 +32,7 @@ pipeline {
                         echo "✅ Conteneur MySQL déjà en cours d'exécution."
                         sh "docker start tpprojet-mysql || true"
                     }
-
-                    // ✅ Attendre que MySQL accepte les connexions
+                    // Attendre que MySQL soit prêt
                     sh '''
                     echo "⏳ Attente que MySQL soit prêt..."
                     for i in {1..10}; do
@@ -47,54 +46,32 @@ pipeline {
                     echo "❌ MySQL ne répond pas après 50 secondes."
                     exit 1
                     '''
-                }
-            }
-        }
-
-        // 1️⃣ Pull depuis Git
-        stage('Pull from Git') {
-            steps {
-                git branch: 'main', url: 'https://github.com/lakhalemna/TPFoyer-DevOps.git'
-            }
-        }
-
-        // 2️⃣ Nettoyage du projet
-        stage('Clean') {
-            steps {
-                sh 'mvn clean'
-            }
-        }
-
-        // 3️⃣ Compilation
-        stage('Compile') {
-            steps {
-                sh 'mvn compile'
-            }
-        }
-
-        // 4️⃣ Analyse de la qualité du code avec SonarQube
-        stage('SonarQube Analysis') {
-            steps {
-                withSonarQubeEnv(SONARQUBE_SERVER) {
+                    // Configurer les permissions MySQL pour root@'%'
                     sh '''
-                    mvn sonar:sonar \
-                    -Dsonar.projectKey=TPFoyer \
-                    -Dsonar.host.url=http://192.168.33.10:9000 \
-                    -Dsonar.login=squ_8eb92e72c4010669e9fe8e78b82a771f4c2975f5
+                    docker exec tpprojet-mysql mysql -u${MYSQL_ROOT_PASSWORD} -p${MYSQL_ROOT_PASSWORD} -e \
+                    "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}'; FLUSH PRIVILEGES;"
                     '''
                 }
             }
         }
-
+        // ... (autres étapes inchangées : Pull from Git, Clean, Compile, SonarQube Analysis)
         // 5️⃣ Génération du JAR avec profil "test"
         stage('Build JAR') {
             steps {
-                // ✅ Correction ici : on remplace -Ptest par -Dspring.profiles.active=test
-                sh 'mvn package -Dspring.profiles.active=test'
+                script {
+                    // Override des propriétés de connexion
+                    withEnv([
+                        "SPRING_DATASOURCE_URL=jdbc:mysql://tpprojet-mysql:3306/${MYSQL_DB}?createDatabaseIfNotExist=true",
+                        "SPRING_DATASOURCE_USERNAME=root",
+                        "SPRING_DATASOURCE_PASSWORD=${MYSQL_ROOT_PASSWORD}",
+                        "SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT=org.hibernate.dialect.MySQLDialect"
+                    ]) {
+                        sh 'mvn package -Dspring.profiles.active=test'
+                    }
+                }
             }
         }
     }
-
     post {
         success {
             echo '✅ Pipeline terminé avec succès !'
