@@ -6,6 +6,8 @@ pipeline {
         MYSQL_PASSWORD = 'password'
         MYSQL_DB = 'tpprojet'
         MYSQL_ROOT_PASSWORD = 'root'
+        // Ajout de l'IP de l'hôte si host.docker.internal ne fonctionne pas
+        MYSQL_HOST = '192.168.33.10' // Remplacez par l'IP de votre machine Vagrant si nécessaire
     }
     stages {
         // 0️⃣ Lancer MySQL dans Docker
@@ -49,8 +51,20 @@ pipeline {
                     // Configurer les permissions MySQL pour root@'%'
                     sh '''
                     docker exec tpprojet-mysql mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e \
-                    "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}'; FLUSH PRIVILEGES;"
+                    "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION; FLUSH PRIVILEGES;"
                     '''
+                }
+            }
+        }
+        // 0.5️⃣ Tester la connexion MySQL depuis l'hôte
+        stage('Test MySQL Connection') {
+            steps {
+                script {
+                    echo "🔍 Test de la connexion MySQL depuis l'hôte..."
+                    sh """
+                    docker run --rm --network tpprojet-network mysql:8 \
+                    mysql -h ${MYSQL_HOST} -u root -p${MYSQL_ROOT_PASSWORD} -e "SELECT 1" ${MYSQL_DB}
+                    """
                 }
             }
         }
@@ -91,7 +105,7 @@ pipeline {
                 script {
                     // Override des propriétés de connexion
                     withEnv([
-                        "SPRING_DATASOURCE_URL=jdbc:mysql://host.docker.internal:3306/${MYSQL_DB}?createDatabaseIfNotExist=true",
+                        "SPRING_DATASOURCE_URL=jdbc:mysql://${MYSQL_HOST}:3306/${MYSQL_DB}?createDatabaseIfNotExist=true",
                         "SPRING_DATASOURCE_USERNAME=root",
                         "SPRING_DATASOURCE_PASSWORD=${MYSQL_ROOT_PASSWORD}",
                         "SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT=org.hibernate.dialect.MySQLDialect"
