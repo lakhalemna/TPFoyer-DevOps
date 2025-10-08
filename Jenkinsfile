@@ -1,10 +1,5 @@
 pipeline {
-    agent {
-        docker {
-            image 'maven:3.8.6-openjdk-17'
-            args '--network tpprojet-network'
-        }
-    }
+    agent any
     environment {
         SONARQUBE_SERVER = 'SonarQube'
         MYSQL_USER = 'user'
@@ -17,7 +12,7 @@ pipeline {
         stage('Start MySQL') {
             steps {
                 script {
-                    // Créer un réseau Docker pour garantir la communication
+                    // Créer un réseau Docker pour le conteneur MySQL
                     sh 'docker network create tpprojet-network || true'
                     // Vérifie si le conteneur MySQL existe
                     def mysqlRunning = sh(script: "docker ps -q -f name=tpprojet-mysql", returnStdout: true).trim()
@@ -53,7 +48,7 @@ pipeline {
                     '''
                     // Configurer les permissions MySQL pour root@'%'
                     sh '''
-                    docker exec tpprojet-mysql mysql -u${MYSQL_ROOT_PASSWORD} -p${MYSQL_ROOT_PASSWORD} -e \
+                    docker exec tpprojet-mysql mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e \
                     "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}'; FLUSH PRIVILEGES;"
                     '''
                 }
@@ -96,7 +91,7 @@ pipeline {
                 script {
                     // Override des propriétés de connexion
                     withEnv([
-                        "SPRING_DATASOURCE_URL=jdbc:mysql://tpprojet-mysql:3306/${MYSQL_DB}?createDatabaseIfNotExist=true",
+                        "SPRING_DATASOURCE_URL=jdbc:mysql://host.docker.internal:3306/${MYSQL_DB}?createDatabaseIfNotExist=true",
                         "SPRING_DATASOURCE_USERNAME=root",
                         "SPRING_DATASOURCE_PASSWORD=${MYSQL_ROOT_PASSWORD}",
                         "SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT=org.hibernate.dialect.MySQLDialect"
